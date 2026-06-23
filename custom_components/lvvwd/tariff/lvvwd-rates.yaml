@@ -1,0 +1,149 @@
+# LVVWD residential water tariff — human-readable mirror of tariff.py.
+# ============================================================================
+# This YAML documents the rate values the cost engine (tariff.py) applies. The
+# Python module is the source of truth; keep the two in sync. The algorithm is
+# validated to the penny against real statements using SYNTHETIC fixtures that
+# live under tests/ (no account / meter / address / statement data here).
+#
+# The LVVWD statement = Water District charges + SNWA charges ONLY. There is no
+# sewer / trash / tax line on the bill, so the computed amount equals the full
+# LVVWD statement subtotal.
+# ============================================================================
+#
+# THE BILL = sum of these parts over a billing period of N days:
+#   1) service_charge   = service_per_day[meter_size] * N
+#   2) volumetric       = sum over 4 tiers of (gallons_in_tier/1000 * tier_rate)
+#   3) excessive_use    = max(0, gallons - excessive_threshold)/1000 * 9.00
+#   4) snwa_commodity   = gallons/1000 * snwa_commodity_rate
+#   5) snwa_infra       = snwa_infra_per_day[meter_size] * N
+#   6) snwa_reliability = 0.0025 * (1 + 2 + 3 + 4)      # NB: EXCLUDES infra(5)
+#   bill = 1+2+3+4+5+6
+#
+# ROUNDING RULES (each independently confirmed by a distinguishing bill):
+#   - TIER breakpoints: daily block * N, rounded to NEAREST 1,000 gal at each
+#     cumulative breakpoint. tier widths = differences of rounded cumulative caps.
+#   - EXCESSIVE threshold: CEILING to the next 1,000 gal, computed PER SEASON
+#     PORTION then summed (NOT round-nearest).
+#   - Per-line dollar amounts round to the cent, half up.
+#
+# METER SIZE: the daily service charge (Table A.5) and the SNWA residential
+# infrastructure charge (Table A.17.a) both scale with meter size, so both are
+# keyed by meter size (inches, as a string). Everything else — tier daily
+# blocks, tier rates, SNWA commodity, reliability, excessive surcharge /
+# thresholds — is meter-size-independent. The default residential size is 5/8"
+# ("0.625"). Supported sizes: 0.625, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 10, 12.
+#
+# RATE-CHANGE SPLIT (effective each Jan 1; rates adjust annually per CPI,
+# Service Rules §7.24): a billing period that straddles a Jan-1 rate change is
+# split into two sub-periods at the effective date. Each sub-period is billed
+# INDEPENDENTLY: usage is prorated by day-count (round to whole 1,000, halves
+# sum back to total), then service(by sub-days), tiers(scaled to sub-days),
+# SNWA commodity(on sub-usage), SNWA infra(by sub-days) are computed per sub-
+# period and summed. EXCEPTIONS: the excessive-use threshold is computed over
+# the WHOLE period at one season (a single bill line, NOT split); reliability is
+# 0.25% of the combined base.
+
+as_of: "2026-06"
+currency: USD
+default_meter_size_in: "0.625"   # 5/8" — the most common residential size
+
+# Rate schedules adjust annually on Jan 1 (CPI-U Pacific A, capped 1.5–4.5%/yr,
+# §7.24). Pick the schedule by the day's date.
+rate_schedules:
+
+  # ---- 2025 schedule (in effect through 2025-12-31) ----
+  # The published 2025 columns cover the 1" meter only (the non-1" 2025 values
+  # were never reprinted in the 2026 PDF). Cost is computed only for current /
+  # forward periods, so this 1"-only limitation never affects 2026+ users; a
+  # pre-2026 period on a non-1" meter is unsupported by design.
+  "2025":
+    effective: "2025-01-01"
+    superseded: "2026-01-01"
+    service_per_day:                   # $/day, Table A.5 (1" only for 2025)
+      "1": 0.6528
+    tier_rates_per_1000gal:
+      t1: 1.56
+      t2: 2.78
+      t3: 4.14
+      t4: 6.14
+    snwa_commodity_per_1000gal: 0.64
+    snwa_infra_per_day:                # $/day, Table A.17.a (1" only for 2025)
+      "1": 1.4431
+
+  # ---- 2026 schedule (effective 2026-01-01; all meter sizes) ----
+  "2026":
+    effective: "2026-01-01"
+    service_per_day:                   # $/day, Table A.5 (2026) by meter size (in)
+      "0.625": 0.4627
+      "0.75": 0.5328
+      "1": 0.6730
+      "1.5": 1.0232
+      "2": 1.4442
+      "3": 2.5662
+      "4": 3.8284
+      "6": 7.3346
+      "8": 11.5421
+      "10": 16.4507
+      "12": 24.1644
+    tier_rates_per_1000gal:
+      t1: 1.61
+      t2: 2.87
+      t3: 4.27
+      t4: 6.33
+    snwa_commodity_per_1000gal: 0.67
+    snwa_infra_per_day:                # $/day, Table A.17.a RESIDENTIAL (2026) by meter size (in)
+      "0.625": 0.5657
+      "0.75": 0.5657
+      "1": 1.4979
+      "1.5": 2.9956
+      "2": 4.7932
+      "3": 9.5853
+      "4": 14.9770
+      "6": 29.9536
+      "8": 47.9252
+      "10": 53.5095
+      "12": 53.5095
+
+# ---- Tier breakpoints (daily blocks; meter-size-independent) ----
+# cumulative cap (gal) at breakpoint k = round_nearest_1000(daily_cum_k * N)
+#   t1 daily 167  -> cum1 = round(167 * N)
+#   t2 daily 167  -> cum2 = round(334 * N)   (t1+t2)
+#   t3 daily 333  -> cum3 = round(667 * N)   (t1+t2+t3)
+#   t4            -> everything above cum3   (unbounded)
+# tier widths: w1=cum1, w2=cum2-cum1, w3=cum3-cum2, w4=usage-cum3
+tier_daily_blocks_gal:
+  t1: 167
+  t2: 167          # cumulative 334
+  t3: 333          # cumulative 667
+  t4: null         # unbounded
+
+# ---- Excessive use surcharge (rate is $9.00 both years; meter-size-independent) ----
+# threshold = SUM over the period's season-portions of:
+#     ceil( season_avg_daily_use * days_in_that_season / 1000 ) * 1000
+# excessive_gallons = max(0, usage - threshold);  charge = excessive/1000 * 9.00
+excessive_use:
+  surcharge_per_1000gal: 9.00
+  rounding: ceil_per_season_portion_to_1000
+  # Official daily averages, Service Rules §7.9 Table 7-1. Fall (867) is from
+  # the table but NOT yet bill-validated (no Sep/Oct statement seen).
+  seasons:
+    winter: { start: "11-01", end: "02-29", avg_daily_use_gal: 467 }  # Nov 1 – Feb 28/29
+    spring: { start: "03-01", end: "04-30", avg_daily_use_gal: 533 }  # Mar 1 – Apr 30
+    summer: { start: "05-01", end: "08-31", avg_daily_use_gal: 933 }  # May 1 – Aug 31
+    fall:   { start: "09-01", end: "10-31", avg_daily_use_gal: 867 }  # Sep 1 – Oct 31
+
+# ---- SNWA Reliability Surcharge (Service Rules §7.23; meter-size-independent) ----
+# 0.25% of the residential water bill = service + consumption(tiers) + excessive
+# + SNWA commodity. EXCLUDES the SNWA infrastructure charge (and itself).
+# (Other customer classes pay 2.5%.)
+snwa_reliability:
+  rate: 0.0025
+  base: [service, tiers, excessive, snwa_commodity]   # excludes snwa_infra
+
+# ============================================================================
+# VALIDATION
+# The penny-accurate algorithm is exercised by synthetic fixtures under tests/
+# (no real account / meter / address / statement values appear in this repo).
+# When a future Jan-1 rate set is published, add a new rate_schedules entry here
+# AND a matching RATE_SCHEDULES entry in tariff.py, and extend the fixtures.
+# ============================================================================

@@ -1,0 +1,18 @@
+{
+  "domain": "lvvwd",
+  "name": "Las Vegas Valley Water District",
+  "codeowners": [
+    "@jasonjhofmann"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/jasonjhofmann/lvvwd-homeassistant",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/jasonjhofmann/lvvwd-homeassistant/issues",
+  "loggers": [
+    "custom_components.lvvwd"
+  ],
+  "quality_scale": "gold",
+  "requirements": [],
+  "version": "0.1.0"
+}

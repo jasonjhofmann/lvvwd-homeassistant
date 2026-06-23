@@ -1,0 +1,90 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"
+
+jobs:
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hacs/action@main
+        with:
+          category: integration
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install -r requirements_test.txt
+      - run: ruff check custom_components tests scripts
+      - run: ruff format --check custom_components tests scripts
+
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 3.13 = the declared support floor (HA 2025.6 -> Python 3.13). The
+        # floor leg catches 3.14-only syntax before it ships (see pyproject's
+        # ruff target-version note).
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -r requirements_test.txt
+      - run: pytest tests -q --cov=custom_components.lvvwd --cov-fail-under=80
+
+  pii-gate:
+    # Fail the build if any known-private token leaks into the public tree.
+    # Patterns are assembled from fragments so this workflow file is not itself
+    # a match (and so the forbidden literals never appear in the repo).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Scan tree for private account/owner tokens
+        run: |
+          set -u
+          # Build forbidden patterns from concatenated halves — never written
+          # whole anywhere in the repo, including in this gate.
+          patterns=(
+            "6026""115368"
+            "Ul""lom"
+            "0678""563"
+            "Jason""Hofmann"
+            "HOF""MANN"
+            "791""\.38"
+            "1497""\.15"
+            "268""\.30"
+            "289""\.96"
+            "516""\.92"
+          )
+          rc=0
+          for p in "${patterns[@]}"; do
+            # Exclude the VCS dir and this very workflow from the scan.
+            if grep -RInE --binary-files=without-match \
+                 --exclude-dir=.git \
+                 --exclude="validate.yml" \
+                 -- "$p" . ; then
+              echo "::error::PII pattern matched in tree: ${p}"
+              rc=1
+            fi
+          done
+          if [ "$rc" -ne 0 ]; then
+            echo "PII gate FAILED — a private token leaked into the public repo."
+            exit 1
+          fi
+          echo "PII gate passed — no private tokens found."

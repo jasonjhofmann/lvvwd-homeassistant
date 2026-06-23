@@ -1,0 +1,79 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "Sign in with the username and password you use at myaccount.lvvwd.com. Your credentials are validated with a real login before the account is added.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        },
+        "data_description": {
+          "username": "Your LVVWD My Account username.",
+          "password": "Your LVVWD My Account password. It is stored locally and only sent to the LVVWD portal."
+        }
+      },
+      "reauth_confirm": {
+        "description": "The LVVWD portal rejected the saved password for {username}. Enter the current password to reconnect.",
+        "data": {
+          "password": "Password"
+        },
+        "data_description": {
+          "password": "The new password is validated with a real login before being saved."
+        }
+      },
+      "reconfigure": {
+        "description": "Update the password used to sign in to LVVWD My Account as {username}.",
+        "data": {
+          "password": "Password"
+        },
+        "data_description": {
+          "password": "The new password is validated with a real login before being saved."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This LVVWD account is already configured",
+      "reauth_successful": "Re-authentication was successful",
+      "reconfigure_successful": "Re-configuration was successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "LVVWD options",
+        "description": "Cost modeling reconstructs your LVVWD statement from daily usage. The meter size is only used when cost modeling is enabled.",
+        "data": {
+          "meter_size": "Meter size (inches)",
+          "enable_cost": "Model billed cost"
+        },
+        "data_description": {
+          "meter_size": "Your water meter size, printed on your statement. Most homes are 0.625\". Affects only the service and SNWA infrastructure day-charges.",
+          "enable_cost": "When enabled, an additional cost statistic (USD) is written alongside usage."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "latest_month": {
+        "name": "Latest month usage"
+      },
+      "data_through": {
+        "name": "Data through"
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "The LVVWD portal rejected the saved username or password"
+    },
+    "scrape_failed": {
+      "message": "Error reading usage from the LVVWD portal: {error}"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.DS_Store
+uv.lock
+
+# Claude Code local session/settings — never commit to a public repo
+.claude/
+
+# Local LVVWD secrets, captured portal samples, and HARs — never commit
+.lvvwd_secrets.json
+samples/
+*.har

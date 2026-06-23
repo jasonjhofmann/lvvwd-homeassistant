@@ -1,0 +1,8 @@
+{
+  "entity": {
+    "sensor": {
+      "latest_month": { "default": "mdi:water" },
+      "data_through": { "default": "mdi:calendar-clock" }
+    }
+  }
+}
