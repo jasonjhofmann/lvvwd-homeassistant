@@ -26,6 +26,11 @@ class LvvwdEntity(CoordinatorEntity[LvvwdDataUpdateCoordinator]):
             entry_type=DeviceEntryType.SERVICE,
             identifiers={(DOMAIN, entry.unique_id or coordinator.username)},
             manufacturer="Las Vegas Valley Water District",
-            name="LVVWD",
+            # Name the device after the config entry (``LVVWD (<account>)``) rather
+            # than a constant, so a second account gets its own device — and, with
+            # ``_attr_has_entity_name``, its own distinct entity_ids — instead of
+            # colliding on ``sensor.lvvwd_*`` and being disambiguated with a ``_2``
+            # suffix. Users can rename the entry to relabel the device.
+            name=entry.title or "LVVWD",
             configuration_url=CONFIGURATION_URL,
         )

@@ -34,6 +34,10 @@ Initial public release.
   it can be wired as the Energy dashboard water source's cost.
 - **Config flow** with credential validation (test-before-configure),
   reauthentication, and an options flow for meter size and the cost opt-in.
+  Multiple accounts are supported: each entry becomes its own device named
+  after the account (`LVVWD (<username>)`), so a second account gets its own
+  distinct entity IDs (`sensor.lvvwd_<username>_…`) instead of colliding on the
+  shared `sensor.lvvwd_*` slugs and being suffixed `_2`.
 - **Diagnostics** with the username and password redacted.
 - In-tree brand assets (original water-droplet artwork), a gold-target quality
   self-assessment, and CI (hassfest, HACS, ruff, pytest on Python 3.13 + 3.14,

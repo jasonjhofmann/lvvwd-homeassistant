@@ -46,6 +46,12 @@ Enter your **portal username and password** — the same credentials you use at
 are validated by a live login before the entry is created, then stored by Home
 Assistant. There is no second factor on the portal.
 
+**Multiple accounts** are supported — add the integration once per portal login.
+Each account becomes its own device, named after the entry (`LVVWD (<username>)`),
+so its entities and statistics stay cleanly separated (`sensor.lvvwd_<username>_…`
+and `lvvwd:<username>_water`). Rename the entry to relabel its device and clean up
+the entity IDs.
+
 ### Parameters
 
 | Parameter | Description |
