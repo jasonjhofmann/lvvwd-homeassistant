@@ -57,11 +57,12 @@ def auto_enable_custom_integrations(request: pytest.FixtureRequest) -> Iterator[
 
     ``enable_custom_integrations`` pulls in ``hass``; the recorder test harness
     requires its own fixtures to resolve *before* ``hass`` is set up (PT-HACC's
-    ``recorder_db_url`` asserts ``not hass_fixture_setup``). So when a test asks
-    for ``recorder_mock``, resolve it first and let it bring up ``hass`` in the
-    right order; otherwise enable custom integrations the normal way.
+    ``recorder_db_url`` asserts ``not hass_fixture_setup``). The integration
+    declares ``recorder`` as a manifest dependency, so any test that brings up
+    ``hass`` must set the in-memory recorder up first; pure tariff/api tests use
+    neither and are left untouched.
     """
-    if "recorder_mock" in request.fixturenames:
+    if "recorder_mock" in request.fixturenames or "hass" in request.fixturenames:
         request.getfixturevalue("recorder_mock")
     request.getfixturevalue("enable_custom_integrations")
     yield

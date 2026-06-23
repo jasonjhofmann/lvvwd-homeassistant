@@ -5,6 +5,9 @@
     "@jasonjhofmann"
   ],
   "config_flow": true,
+  "dependencies": [
+    "recorder"
+  ],
   "documentation": "https://github.com/jasonjhofmann/lvvwd-homeassistant",
   "integration_type": "service",
   "iot_class": "cloud_polling",
