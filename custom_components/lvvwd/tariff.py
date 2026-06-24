@@ -50,11 +50,13 @@ DAILY ACCRUAL DEFINITION (accrue_period):
       threshold, shifting units into cheaper tiers). The cumulative is what
       matters; real statement anchors re-true it each cycle.
 
-PRE-2026 METER SIZES: the 2025 rate schedule lists service/infra ONLY for the
-1" meter (the only size present on the historical statements used to validate
-the engine; the non-1" 2025 columns were never published in the 2026 PDF). Cost
-is computed only for current/forward periods, so this never affects go-forward
-2026+ users; a pre-2026 period on a non-1" meter raises ``KeyError`` by design.
+PRE-2026 METER SIZES: the 2025 rate schedule lists service/infra for the 1" and
+3/4" meters (the sizes present on the statements used to validate the engine —
+3/4" was added from a real 3/4" statement straddling Jan 1 2026; the remaining
+non-1"/non-3/4" 2025 columns were never published in the 2026 PDF). Cost is
+computed only for current/forward periods, so a missing size never affects
+go-forward 2026+ users; a pre-2026 period on an absent meter size raises
+``KeyError`` by design.
 
 Future years: add a new entry to RATE_SCHEDULES (and tariff/lvvwd-rates.yaml).
 Dates past the latest known schedule price at that latest schedule (a stale-
@@ -117,12 +119,14 @@ SUPPORTED_METER_SIZES = (
 # schedule has only the 1" column (see PRE-2026 METER SIZES in the docstring).
 
 RATE_SCHEDULES = (
-    {  # 2025 schedule (through 2025-12-31) — 1" only
+    {  # 2025 schedule (through 2025-12-31) — 1" and 3/4" known
         "effective": dt.date(2025, 1, 1),
-        "service_per_day": {"1": D("0.6528")},
+        # 0.75 added from a real 3/4" statement straddling Jan 1 2026 (the only
+        # 2025 non-1" column we've been able to source); other sizes stay absent.
+        "service_per_day": {"1": D("0.6528"), "0.75": D("0.5168")},
         "tier_rates": (D("1.56"), D("2.78"), D("4.14"), D("6.14")),
         "commodity_per_kgal": D("0.64"),
-        "snwa_infra_per_day": {"1": D("1.4431")},
+        "snwa_infra_per_day": {"1": D("1.4431"), "0.75": D("0.545")},
     },
     {  # 2026 schedule (effective 2026-01-01) — all meter sizes
         "effective": dt.date(2026, 1, 1),

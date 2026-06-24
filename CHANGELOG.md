@@ -28,7 +28,10 @@ Initial public release.
   daily infrastructure charge, and the reliability surcharge — including the
   Jan-1 rate-split for periods that straddle a rate change. Generalized across
   all supported meter sizes for the daily service and SNWA infrastructure
-  charges using the published 2026 rate tables.
+  charges using the published 2026 rate tables. The 2025 schedule also carries
+  the 3/4" service/infra columns (recovered from a real 3/4" statement that
+  straddled Jan 1 2026), so a 3/4"-meter period crossing that boundary
+  reconciles instead of raising; all six validating statements match to the cent.
 - **Optional cost statistic** (`lvvwd:<account>_water_cost`, USD), off by
   default. When enabled in options, the open-period daily accrual is written so
   it can be wired as the Energy dashboard water source's cost.

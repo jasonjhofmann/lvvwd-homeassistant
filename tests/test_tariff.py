@@ -30,7 +30,7 @@ from custom_components.lvvwd.tariff import (
 # --- Independent rate data (re-typed by hand, not imported from tariff.py) ---
 
 _ORACLE_SERVICE = {
-    2025: {"1": "0.6528"},
+    2025: {"1": "0.6528", "0.75": "0.5168"},
     2026: {
         "0.625": "0.4627",
         "0.75": "0.5328",
@@ -46,7 +46,7 @@ _ORACLE_SERVICE = {
     },
 }
 _ORACLE_INFRA = {
-    2025: {"1": "1.4431"},
+    2025: {"1": "1.4431", "0.75": "0.545"},
     2026: {
         "0.625": "0.5657",
         "0.75": "0.5657",
@@ -198,6 +198,8 @@ SYNTHETIC_CASES = [
     # Period straddling Jan 1 (2025 + 2026 schedules apply per sub-period).
     ("2025-12-18", "2026-01-19", 40, "1"),
     ("2025-12-10", "2026-01-12", 33, "1"),
+    # Straddle on a 3/4" meter — exercises the 2025 3/4" service/infra columns.
+    ("2025-12-09", "2026-01-08", 10, "0.75"),
 ]
 
 
