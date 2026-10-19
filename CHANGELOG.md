@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+- **Tests: device lookups work on every harness CI resolves.** The weekly
+  Validate run had failed since 2026-08-31: HA dev hard-errors the deprecated
+  `async_get_device` in test frames. A `_get_device` helper uses
+  `async_get_device_by_identifier` where the harness has it (HA 2026.8+) and
+  falls back on the older harness the Python 3.13 leg resolves. No integration
+  code changes; the integration itself never called the old API.
+- **CI: new Minimum supported HA job.** It reads the floor from `hacs.json`
+  and the integration's requirements from `manifest.json`, resolves every
+  package as of the floor's release date (a fresh resolve of HA 2025.6 pulls a
+  `pycares` too new for its `aiodns` and fails to import), and imports every
+  module against that exact release. Import check only; this integration has no
+  mypy configuration yet.
+- **Known issue: statistics fail on HA 2025.6 through 2025.10.** `hacs.json`
+  declares HA 2025.6.0, but the statistics metadata passes `unit_class`, which
+  `StatisticMetaData` only gained in HA 2025.11. On older releases every
+  statistics write raises `TypeError: 'unit_class' is an invalid keyword
+  argument for StatisticsMeta` (three `test_statistics.py` tests fail against
+  HA 2025.6.3 and 2025.10.4). Not yet corrected.
+
 ## [0.1.0] — 2026-08-24
 
 Initial public release. (The section was drafted 2026-06-23; the date above is

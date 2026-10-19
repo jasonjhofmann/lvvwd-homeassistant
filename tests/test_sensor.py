@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
@@ -13,6 +13,23 @@ from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 from custom_components.lvvwd.const import DOMAIN
 
 from .conftest import make_entry
+
+
+def _get_device(
+    device_reg: dr.DeviceRegistry,
+    identifier: tuple[str, str],
+    entry: ConfigEntry,
+) -> dr.DeviceEntry | None:
+    """Per-entry device lookup that works on every harness this matrix resolves.
+
+    HA 2026.8 added ``async_get_device_by_identifier`` and HA dev hard-errors
+    the old ``async_get_device`` in test frames; the Python 3.13 leg resolves
+    an older harness that predates the new API, so probe for it.
+    """
+    if hasattr(device_reg, "async_get_device_by_identifier"):
+        return device_reg.async_get_device_by_identifier(identifier, entry.entry_id)
+    return device_reg.async_get_device(identifiers={identifier})
+
 
 pytestmark = pytest.mark.usefixtures("mock_client")
 
@@ -81,8 +98,8 @@ async def test_two_accounts_get_distinct_entities(hass: HomeAssistant) -> None:
 
     # Two separate service devices, named after their entries.
     devices = dr.async_get(hass)
-    device_a = devices.async_get_device(identifiers={(DOMAIN, "accountone")})
-    device_b = devices.async_get_device(identifiers={(DOMAIN, "accounttwo")})
+    device_a = _get_device(devices, (DOMAIN, "accountone"), entry_a)
+    device_b = _get_device(devices, (DOMAIN, "accounttwo"), entry_b)
     assert device_a is not None and device_b is not None
     assert device_a.id != device_b.id
     assert device_a.name == "LVVWD (accountone)"
