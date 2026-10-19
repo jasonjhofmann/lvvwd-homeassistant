@@ -30,6 +30,9 @@ Assistant long-term **statistics**.
 
 ## Installation
 
+Requires Home Assistant 2025.11.0 or later. Earlier releases can't store the
+`unit_class` that this integration's statistics declare.
+
 Until this repo is in the HACS default store, add it as a custom repository:
 
 1. HACS → ⋮ → *Custom repositories* → add

@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # 3.13 = the declared support floor (HA 2025.6 -> Python 3.13). The
+        # 3.13 = the declared support floor (HA 2025.11 -> Python 3.13). The
         # floor leg catches 3.14-only syntax before it ships (see pyproject's
         # ruff target-version note).
         python-version: ["3.13", "3.14"]
@@ -95,12 +95,15 @@ jobs:
   # Reads the floor from hacs.json and the integration's own requirements
   # from manifest.json, then imports every module against that exact release.
   #
-  # Import check only: this integration has no mypy configuration yet.
+  # mypy runs here in its default (non-strict) mode: this integration has no
+  # mypy configuration, but even the default mode catches what an import
+  # cannot, such as a TypedDict key the floor's Home Assistant doesn't have
+  # (the unit_class bug fixed in 0.2.0).
   minimum-supported-ha:
     name: Minimum supported HA (hacs.json floor)
     runs-on: ubuntu-latest
     env:
-      # Must satisfy the floor's requires-python (HA 2025.6 = Python 3.13).
+      # Must satisfy the floor's requires-python (HA 2025.11 = Python 3.13).
       FLOOR_PYTHON: "3.13"
     steps:
       - uses: actions/checkout@v7
@@ -108,12 +111,15 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      # Everything resolves as of the floor's release date (+1 day), via
-      # UV_EXCLUDE_NEWER. HA pins its direct dependencies but not all of
-      # theirs, and a fresh resolve drifts past what the release shipped with:
-      # HA 2025.6 pins aiodns 3.4.0 but not pycares, and pycares 5 removed an
-      # API that aiodns uses, so the floor failed to import. (An integration
-      # requirement newer than the floor would need --exclude-newer-package.)
+      # Recreates the environment the floor release actually shipped into.
+      # Every package resolves as of the floor's PyPI release date (+1 day),
+      # via UV_EXCLUDE_NEWER: HA pins its direct dependencies but not theirs,
+      # and a fresh resolve drifts (HA 2025.6 pins aiodns 3.4.0 but not
+      # pycares, and pycares 5 removed an API aiodns uses). HA's own exact
+      # pins are also restated as direct requirements, because uv installs a
+      # since-yanked version only when it is pinned directly (HA 2025.3.0
+      # pins aiohttp 3.11.13, yanked later). An integration requirement
+      # released after the floor would need --exclude-newer-package.
       - name: Pin the floor and the integration's requirements
         run: |
           python3 - <<'PY'
@@ -123,19 +129,24 @@ jobs:
           import urllib.request
           floor = json.load(open("hacs.json"))["homeassistant"]
           reqs = json.load(open("custom_components/lvvwd/manifest.json"))["requirements"]
-          with open("floor-requirements.txt", "w") as f:
-              f.write("\n".join([f"homeassistant=={floor}", "voluptuous", *reqs]) + "\n")
           url = f"https://pypi.org/pypi/homeassistant/{floor}/json"
-          files = json.load(urllib.request.urlopen(url))["urls"]
+          meta = json.load(urllib.request.urlopen(url))
           released = min(
               dt.datetime.fromisoformat(u["upload_time_iso_8601"].replace("Z", "+00:00"))
-              for u in files
+              for u in meta["urls"]
           )
           cutoff = (released + dt.timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+          pins = [
+              r for r in meta["info"]["requires_dist"] or [] if "==" in r and ";" not in r
+          ]
+          with open("floor-requirements.txt", "w") as f:
+              lines = [f"homeassistant=={floor}", *pins, "voluptuous", *reqs]
+              f.write("\n".join(lines) + "\n")
           with open(os.environ["GITHUB_ENV"], "a") as f:
               f.write(f"UV_EXCLUDE_NEWER={cutoff}\n")
           print(f"Declared Home Assistant floor: {floor} (released {released:%Y-%m-%d}); "
-                f"requirements: {reqs}; resolving as of {cutoff}")
+                f"{len(pins)} HA pins restated; requirements: {reqs}; "
+                f"resolving as of {cutoff}")
           PY
 
       - name: Import every module against the floor
@@ -150,3 +161,11 @@ jobs:
               importlib.import_module(f'{pkg.__name__}.{name}')
           print(f'{len(names)} modules import on the declared floor')
           "
+
+      - name: Mypy against the floor
+        run: |
+          uv run --no-project --python "$FLOOR_PYTHON" \
+            --with-requirements floor-requirements.txt \
+            --with mypy \
+            --with types-requests \
+            mypy custom_components/lvvwd/

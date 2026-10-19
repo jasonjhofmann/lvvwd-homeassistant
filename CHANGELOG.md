@@ -4,8 +4,19 @@ All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] — 2026-10-18
 
+- **Breaking: minimum Home Assistant raised to 2025.11.0 (was 2025.6.0).**
+  This fixes statistics on the releases it drops: the statistics metadata
+  declares `unit_class`, which `StatisticMetaData` only gained in HA 2025.11,
+  so on HA 2025.6 through 2025.10 every statistics write raised `TypeError:
+  'unit_class' is an invalid keyword argument for StatisticsMeta` and no water
+  or cost history was recorded (the sensors still worked). Verified by running
+  the full test suite against each release, with dependencies resolved as of
+  its release date: all 54 tests pass on HA 2025.11.0, and three statistics
+  tests fail on 2025.10.4 and 2025.6.3. On HA 2025.6 through 2025.10, stay on
+  0.1.0 until you upgrade Home Assistant. The README now states the
+  requirement.
 - **Tests: device lookups work on every harness CI resolves.** The weekly
   Validate run had failed since 2026-08-31: HA dev hard-errors the deprecated
   `async_get_device` in test frames. A `_get_device` helper uses
@@ -13,17 +24,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   falls back on the older harness the Python 3.13 leg resolves. No integration
   code changes; the integration itself never called the old API.
 - **CI: new Minimum supported HA job.** It reads the floor from `hacs.json`
-  and the integration's requirements from `manifest.json`, resolves every
-  package as of the floor's release date (a fresh resolve of HA 2025.6 pulls a
-  `pycares` too new for its `aiodns` and fails to import), and imports every
-  module against that exact release. Import check only; this integration has no
-  mypy configuration yet.
-- **Known issue: statistics fail on HA 2025.6 through 2025.10.** `hacs.json`
-  declares HA 2025.6.0, but the statistics metadata passes `unit_class`, which
-  `StatisticMetaData` only gained in HA 2025.11. On older releases every
-  statistics write raises `TypeError: 'unit_class' is an invalid keyword
-  argument for StatisticsMeta` (three `test_statistics.py` tests fail against
-  HA 2025.6.3 and 2025.10.4). Not yet corrected.
+  and the integration's requirements from `manifest.json`, resolves packages
+  as of the floor's release date and restates HA's own exact pins (a fresh
+  resolve of HA 2025.6 pulled a `pycares` too new for its `aiodns`), then
+  imports every module and runs mypy in its default mode against that exact
+  release. Default-mode mypy is what catches a TypedDict key the floor doesn't
+  have: against HA 2025.6 it flags `unit_class`.
 
 ## [0.1.0] — 2026-08-24
 
