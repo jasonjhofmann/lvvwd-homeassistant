@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import (
@@ -17,6 +18,7 @@ from .api import (
     LvvwdClient,
     LvvwdConnectionError,
     LvvwdError,
+    LvvwdParseError,
 )
 from .const import (
     CONF_ENABLE_COST,
@@ -31,6 +33,16 @@ from .statistics import async_write_statistics
 _LOGGER = logging.getLogger(__name__)
 
 type LvvwdConfigEntry = ConfigEntry[LvvwdDataUpdateCoordinator]
+
+# Consecutive unreadable scrapes before raising the Repairs issue. One can be
+# a one-off error page; two in a row (a day apart at the 12-hour poll) means
+# the portal's HTML has most likely changed.
+PARSE_FAILURES_BEFORE_ISSUE = 2
+
+
+def portal_changed_issue_id(entry_id: str) -> str:
+    """Repairs issue id for an entry whose portal pages can't be read."""
+    return f"portal_changed_{entry_id}"
 
 
 class LvvwdData(TypedDict):
@@ -55,6 +67,7 @@ class LvvwdDataUpdateCoordinator(DataUpdateCoordinator[LvvwdData]):
         """Initialize."""
         self.client = client
         self.username: str = config_entry.data[CONF_USERNAME]
+        self._parse_failures = 0
         super().__init__(
             hass,
             _LOGGER,
@@ -70,7 +83,10 @@ class LvvwdDataUpdateCoordinator(DataUpdateCoordinator[LvvwdData]):
         never blocks the event loop. An auth bounce raises
         ``ConfigEntryAuthFailed`` (HA starts the reauth flow); any other
         scrape failure raises ``UpdateFailed`` and the last good data is kept.
+        Pages that keep failing to parse also raise a Repairs issue (the user
+        needs an updated integration), cleared by the next good scrape.
         """
+        issue_id = portal_changed_issue_id(self.config_entry.entry_id)
         try:
             monthly, daily = await self.hass.async_add_executor_job(
                 self.client.fetch_all
@@ -81,11 +97,26 @@ class LvvwdDataUpdateCoordinator(DataUpdateCoordinator[LvvwdData]):
                 translation_key="invalid_auth",
             ) from err
         except (LvvwdConnectionError, LvvwdError, TimeoutError) as err:
+            if isinstance(err, LvvwdParseError):
+                self._parse_failures += 1
+                if self._parse_failures >= PARSE_FAILURES_BEFORE_ISSUE:
+                    ir.async_create_issue(
+                        self.hass,
+                        DOMAIN,
+                        issue_id,
+                        is_fixable=False,
+                        severity=ir.IssueSeverity.ERROR,
+                        translation_key="portal_changed",
+                        translation_placeholders={"error": str(err)},
+                    )
             raise UpdateFailed(
                 translation_domain=DOMAIN,
                 translation_key="scrape_failed",
                 translation_placeholders={"error": str(err) or type(err).__name__},
             ) from err
+
+        self._parse_failures = 0
+        ir.async_delete_issue(self.hass, DOMAIN, issue_id)
 
         data_through = _latest_complete_day(daily)
         data: LvvwdData = {

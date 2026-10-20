@@ -50,6 +50,17 @@ DAILY ACCRUAL DEFINITION (accrue_period):
       threshold, shifting units into cheaper tiers). The cumulative is what
       matters; real statement anchors re-true it each cycle.
 
+MONTHLY ACCRUAL (accrue_months; what the integration's cost statistic uses):
+  The portal gives no billing-period dates, so each CALENDAR MONTH is priced
+  as one bill, and the series is extended one day at a time, never rewritten.
+  The month's usage allowances (tier caps and the excessive-use threshold)
+  are sized for the WHOLE month from its first day (compute_bill's
+  ``allowance_end``), while the day charges count only the days so far. So:
+    * the last day of a month equals compute_bill on that month exactly;
+    * cost-to-date never falls (no negative deltas), unlike accrue_period;
+    * a month's total is close to, but not the same as, a statement for a
+      billing period that runs across two months.
+
 PRE-2026 METER SIZES: the 2025 rate schedule lists service/infra for the 1" and
 3/4" meters (the sizes present on the statements used to validate the engine —
 3/4" was added from a real 3/4" statement straddling Jan 1 2026; the remaining
@@ -66,17 +77,21 @@ rate approximation until the new Jan-1 schedule is added).
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
 
 __all__ = [
     "RATE_SCHEDULES",
     "DEFAULT_METER_SIZE",
     "SUPPORTED_METER_SIZES",
+    "AccrualState",
     "BillResult",
     "SubPeriod",
     "compute_bill",
     "accrue_period",
+    "accrue_months",
+    "month_end",
+    "newest_schedule_year",
     "tier_units",
     "tier_caps_kgal",
     "season_portions",
@@ -351,15 +366,25 @@ class BillResult:
     subtotal: Decimal
 
 
-def compute_bill(start, end, usage_kgal, meter_size=DEFAULT_METER_SIZE):
+def compute_bill(
+    start, end, usage_kgal, meter_size=DEFAULT_METER_SIZE, *, allowance_end=None
+):
     """Compute one LVVWD statement over [start..end] INCLUSIVE for `usage_kgal`
     whole 1000-gal units ('billed usage'). `meter_size` is the meter diameter in
     inches as a string (see SUPPORTED_METER_SIZES); it indexes BOTH the daily
     service charge and the SNWA infrastructure charge. Returns BillResult
-    (Decimal money)."""
+    (Decimal money).
+
+    `allowance_end` (default: `end`) sizes only the usage allowances, the tier
+    caps and the excessive-use threshold, as if the period ran through that
+    date; the day charges still count days through `end`. accrue_months uses it
+    to price a month to date against the whole month's allowances."""
     start, end = _as_date(start), _as_date(end)
     if end < start:
         raise ValueError(f"end {end} before start {start}")
+    allowance_end = end if allowance_end is None else _as_date(allowance_end)
+    if allowance_end < end:
+        raise ValueError(f"allowance_end {allowance_end} before end {end}")
     usage_kgal = int(usage_kgal)
     if usage_kgal < 0:
         raise ValueError("negative usage")
@@ -368,11 +393,16 @@ def compute_bill(start, end, usage_kgal, meter_size=DEFAULT_METER_SIZE):
     subs = split_at_jan1(start, end)
     day_counts = [(e - s).days + 1 for s, e in subs]
     sub_usage = prorate_usage(usage_kgal, day_counts)
+    # The billed sub-periods are a prefix of the allowance window's, so the
+    # i-th billed sub-period takes its tier caps from the i-th allowance one.
+    allowance_days = [(e - s).days + 1 for s, e in split_at_jan1(start, allowance_end)]
 
     sub_results = []
-    for (s, e), nd, u in zip(subs, day_counts, sub_usage, strict=True):
+    for (s, e), nd, u, nd_allow in zip(
+        subs, day_counts, sub_usage, allowance_days, strict=False
+    ):
         sched = schedule_for(s)
-        units = tier_units(u, nd)
+        units = tier_units(u, nd_allow)
         sub_results.append(
             SubPeriod(
                 start=s,
@@ -391,7 +421,7 @@ def compute_bill(start, end, usage_kgal, meter_size=DEFAULT_METER_SIZE):
         )
 
     # Excessive use: WHOLE period, single line (NOT split at Jan 1).
-    threshold = excessive_threshold_kgal(start, end)
+    threshold = excessive_threshold_kgal(start, allowance_end)
     exc_units = max(0, usage_kgal - threshold)
     excessive = round_cent(exc_units * EXCESSIVE_RATE_PER_KGAL)
 
@@ -456,6 +486,109 @@ def accrue_period(period_start, daily_gallons, meter_size=DEFAULT_METER_SIZE):
         out.append((d, compute_bill(period_start, d, usage_units, meter_size).subtotal))
         d += dt.timedelta(days=1)
     return out
+
+
+def month_end(day):
+    """Last day of `day`'s calendar month."""
+    day = _as_date(day)
+    first_of_next = (day.replace(day=1) + dt.timedelta(days=32)).replace(day=1)
+    return first_of_next - dt.timedelta(days=1)
+
+
+def newest_schedule_year():
+    """Year of the newest rate schedule; later dates price at its rates."""
+    return max(s["effective"] for s in RATE_SCHEDULES).year
+
+
+@dataclass
+class AccrualState:
+    """Where a monthly cost accrual (accrue_months) stands.
+
+    last_day: the last day accrued. period_start: first day of the open
+    month (the 1st, or the day accrual started or restarted). period_gal:
+    gallons in the open month through last_day. base: cost of every closed
+    month. cost_to_date: the open month's cost through last_day.
+    """
+
+    last_day: dt.date
+    period_start: dt.date
+    period_gal: float
+    base: Decimal
+    cost_to_date: Decimal
+
+    @classmethod
+    def starting(cls, first_day, base=0):
+        """State before accruing `first_day`, on top of `base` already counted."""
+        first_day = _as_date(first_day)
+        return cls(
+            last_day=first_day - dt.timedelta(days=1),
+            period_start=first_day,
+            period_gal=0.0,
+            base=round_cent(D(str(base))),
+            cost_to_date=D("0.00"),
+        )
+
+    @property
+    def total(self):
+        """Cumulative cost through last_day (the statistic's ``sum``)."""
+        return self.base + self.cost_to_date
+
+    def as_dict(self):
+        """JSON-safe form for storage."""
+        return {
+            "last_day": self.last_day.isoformat(),
+            "period_start": self.period_start.isoformat(),
+            "period_gal": self.period_gal,
+            "base": str(self.base),
+            "cost_to_date": str(self.cost_to_date),
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        """Inverse of as_dict; raises KeyError/ValueError on a malformed dict."""
+        return cls(
+            last_day=_as_date(data["last_day"]),
+            period_start=_as_date(data["period_start"]),
+            period_gal=float(data["period_gal"]),
+            base=D(data["base"]),
+            cost_to_date=D(data["cost_to_date"]),
+        )
+
+
+def accrue_months(state, daily_gallons, end, meter_size=DEFAULT_METER_SIZE):
+    """Extend a monthly cost accrual through `end`; see 'MONTHLY ACCRUAL'.
+
+    state: AccrualState after the last accrued day (AccrualState.starting for
+    a new series). daily_gallons: {date/ISO: gallons}; a day missing or None
+    counts as zero gallons but still accrues its day charges.
+
+    Returns (points, new_state). points = [(date, delta, cumulative), ...], one
+    per day after state.last_day through `end`. `state` is not modified.
+    """
+    end = _as_date(end)
+    gal = {_as_date(k): float(v or 0.0) for k, v in (daily_gallons or {}).items()}
+    s = replace(state)
+    points = []
+    d = s.last_day + dt.timedelta(days=1)
+    while d <= end:
+        if (d.year, d.month) != (s.period_start.year, s.period_start.month):
+            # d is the 1st: close the previous month at its final cost.
+            s.base += s.cost_to_date
+            s.period_start, s.period_gal, s.cost_to_date = d, 0.0, D("0.00")
+        before = s.total
+        s.period_gal += gal.get(d, 0.0)
+        units = int((s.period_gal + 1e-6) // 1000.0)
+        s.cost_to_date = compute_bill(
+            s.period_start,
+            d,
+            units,
+            meter_size,
+            allowance_end=month_end(s.period_start),
+        ).subtotal
+        s.last_day = d
+        points.append((d, s.total - before, s.total))
+        d += dt.timedelta(days=1)
+    return points, s
 
 
 def _norm_statement(st):

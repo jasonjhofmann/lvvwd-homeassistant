@@ -75,5 +75,11 @@
     "scrape_failed": {
       "message": "Error reading usage from the LVVWD portal: {error}"
     }
+  },
+  "issues": {
+    "portal_changed": {
+      "title": "LVVWD portal pages can't be read",
+      "description": "The integration couldn't read the usage charts on myaccount.lvvwd.com on two scrapes in a row ({error}). LVVWD has most likely changed the portal, and the integration needs an update to read it again. Check HACS for an update to Las Vegas Valley Water District. Once a scrape succeeds, the statistics catch up on every day the portal still shows (about the last four weeks)."
+    }
   }
 }

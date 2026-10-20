@@ -76,7 +76,8 @@ rules:
     status: done
   docs-configuration-parameters:
     status: done
-    comment: README Options section documents meter size and the cost opt-in.
+    comment: README Options section documents meter size and the cost opt-in
+      (labelled "Model billed cost").
   docs-installation-parameters:
     status: done
     comment: README Parameters table (portal username/password).
@@ -121,14 +122,15 @@ rules:
       cost).
   docs-known-limitations:
     status: done
-    comment: README Known limitations (short daily history, no MFA, non-1"
-      cost unvalidated-from-source, unofficial/ToS disclaimer).
+    comment: README Limitations (short daily history, no MFA, cost for other
+      meter sizes unvalidated from source, calendar-month cost, new-year
+      rates, unofficial/ToS disclaimer).
   docs-supported-devices:
     status: done
     comment: README — any LVVWD residential myaccount.lvvwd.com customer.
   docs-supported-functions:
     status: done
-    comment: README Statistics/Entities section.
+    comment: README Entities and Statistics it creates sections.
   docs-troubleshooting:
     status: done
     comment: README Troubleshooting section.
@@ -157,14 +159,15 @@ rules:
     status: done
   reconfiguration-flow:
     status: done
-    comment: Options flow updates meter size and the cost opt-in; reauth
-      updates the password.
+    comment: A reconfigure step changes the stored password ahead of a
+      rejection (the username is the unique id); the options flow updates
+      meter size and the cost opt-in.
   repair-issues:
-    status: todo
-    comment: Planned — raise a Repairs issue when the portal's HTML chart
-      format changes (parse yields no series) so the user is told to update
-      the integration, rather than silently degrading. Reauth is already
-      surfaced by HA itself.
+    status: done
+    comment: Two consecutive unparseable scrapes (the portal's HTML changed)
+      raise a non-fixable portal_changed issue telling the user to update the
+      integration; the next good scrape, or removing the entry, deletes it.
+      Reauth is already surfaced by HA itself.
   stale-devices:
     status: done
     comment: The single account device is removed when the entry is removed.

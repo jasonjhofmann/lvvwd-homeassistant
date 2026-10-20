@@ -8,7 +8,8 @@ agree on a battery of synthetic periods, the engine reproduces the documented
 algorithm. Inputs (periods, usage, meter sizes) are all invented.
 
 Rate values come from the published 2026 LVVWD/SNWA residential schedule (and
-the 2025 1"-only schedule) — public tariff data, not account data.
+the 2025 schedule's 1" and 3/4" columns) — public tariff data, not account
+data.
 """
 
 from __future__ import annotations
@@ -344,3 +345,114 @@ def test_verify_statements_against_synthetic_oracle() -> None:
         for s, e, u, m in cases
     ]
     assert tariff.verify_statements(statements) == []
+
+
+# --- Monthly accrual (the integration's cost statistic) ---
+
+# Invented: one heavy day, then a trickle. With day-count-sized allowances the
+# growing tier caps re-price the heavy day into cheaper tiers, which is what
+# makes accrue_period dip; accrue_months must not.
+_JUNE = dt.date(2026, 6, 1)
+_HEAVY_THEN_TRICKLE = {
+    (_JUNE + dt.timedelta(days=i)).isoformat(): (6000 if i == 0 else 100)
+    for i in range(30)
+}
+
+
+def test_allowance_end_defaults_to_end() -> None:
+    """allowance_end=end is the plain bill; an earlier allowance_end is refused."""
+    s, e = dt.date(2026, 6, 1), dt.date(2026, 6, 12)
+    assert compute_bill(s, e, 9, allowance_end=e) == compute_bill(s, e, 9)
+    with pytest.raises(ValueError, match="allowance_end"):
+        compute_bill(s, e, 9, allowance_end=dt.date(2026, 6, 11))
+
+
+def test_allowance_end_sizes_only_the_allowances() -> None:
+    """A later allowance_end widens tier caps and the threshold, nothing else."""
+    s, e = dt.date(2026, 6, 1), dt.date(2026, 6, 10)
+    plain = compute_bill(s, e, 12)
+    sized = compute_bill(s, e, 12, allowance_end=dt.date(2026, 6, 30))
+    assert sized.service_total == plain.service_total
+    assert sized.infra_total == plain.infra_total
+    assert sized.commodity_total == plain.commodity_total
+    assert sized.excessive_threshold_kgal == tariff.excessive_threshold_kgal(
+        s, dt.date(2026, 6, 30)
+    )
+    assert sized.sub_periods[0].tier_units == tariff.tier_units(12, 30)
+    assert sized.subtotal < plain.subtotal
+
+
+def test_accrue_period_dips_on_this_fixture() -> None:
+    """Guard for the next test: the fixture really does make accrue_period dip."""
+    acc = accrue_period(_JUNE, _HEAVY_THEN_TRICKLE, "0.625")
+    assert any(b[1] < a[1] for a, b in zip(acc, acc[1:], strict=False))
+
+
+def test_accrue_months_never_falls_and_ends_on_the_bill() -> None:
+    """Every delta is >= 0, deltas telescope, and day 30 is June's exact bill."""
+    state = tariff.AccrualState.starting(_JUNE)
+    points, new = tariff.accrue_months(
+        state, _HEAVY_THEN_TRICKLE, dt.date(2026, 6, 30), "0.625"
+    )
+    assert [p[0] for p in points] == [_JUNE + dt.timedelta(days=i) for i in range(30)]
+    assert all(delta >= 0 for _, delta, _ in points)
+    assert sum(delta for _, delta, _ in points) == points[-1][2]
+    total_kgal = sum(_HEAVY_THEN_TRICKLE.values()) // 1000
+    june_bill = compute_bill(_JUNE, dt.date(2026, 6, 30), total_kgal, "0.625")
+    assert points[-1][2] == june_bill.subtotal == new.total
+    assert state.last_day == _JUNE - dt.timedelta(days=1)  # input not mutated
+
+
+def test_accrue_months_closes_each_month() -> None:
+    """Crossing the 1st banks the month's bill and starts a fresh one."""
+    daily = {
+        (dt.date(2026, 6, 25) + dt.timedelta(days=i)).isoformat(): 700
+        for i in range(12)
+    }
+    start = dt.date(2026, 6, 25)
+    points, new = tariff.accrue_months(
+        tariff.AccrualState.starting(start), daily, dt.date(2026, 7, 6)
+    )
+    june = compute_bill(start, dt.date(2026, 6, 30), 6 * 700 // 1000)
+    july = compute_bill(
+        dt.date(2026, 7, 1),
+        dt.date(2026, 7, 6),
+        6 * 700 // 1000,
+        allowance_end=dt.date(2026, 7, 31),
+    )
+    by_day = {d: total for d, _, total in points}
+    assert by_day[dt.date(2026, 6, 30)] == june.subtotal
+    assert new.base == june.subtotal
+    assert new.period_start == dt.date(2026, 7, 1)
+    assert new.total == june.subtotal + july.subtotal
+
+
+def test_accrue_months_resumes_from_saved_state() -> None:
+    """Two runs through a saved state give the same series as one run."""
+    state = tariff.AccrualState.starting(_JUNE)
+    end = dt.date(2026, 6, 30)
+    one, _ = tariff.accrue_months(state, _HEAVY_THEN_TRICKLE, end)
+    first, mid = tariff.accrue_months(state, _HEAVY_THEN_TRICKLE, dt.date(2026, 6, 12))
+    restored = tariff.AccrualState.from_dict(mid.as_dict())
+    assert restored == mid
+    second, _ = tariff.accrue_months(restored, _HEAVY_THEN_TRICKLE, end)
+    assert first + second == one
+
+
+def test_accrual_state_starting_on_a_base() -> None:
+    """A restart carries the base forward and accrues nothing until fed."""
+    state = tariff.AccrualState.starting("2026-06-15", base=123.456)
+    assert state.base == Decimal("123.46")
+    assert state.total == Decimal("123.46")
+    assert state.last_day == dt.date(2026, 6, 14)
+    assert tariff.accrue_months(state, {}, dt.date(2026, 6, 14)) == ([], state)
+
+
+def test_month_end_and_newest_schedule_year() -> None:
+    assert tariff.month_end(dt.date(2026, 2, 10)) == dt.date(2026, 2, 28)
+    assert tariff.month_end(dt.date(2028, 2, 1)) == dt.date(2028, 2, 29)
+    assert tariff.month_end(dt.date(2026, 12, 31)) == dt.date(2026, 12, 31)
+    assert (
+        tariff.newest_schedule_year()
+        == max(s["effective"] for s in tariff.RATE_SCHEDULES).year
+    )

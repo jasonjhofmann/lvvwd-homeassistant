@@ -6,9 +6,16 @@ import logging
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 
 from .api import LvvwdClient
-from .coordinator import LvvwdConfigEntry, LvvwdDataUpdateCoordinator
+from .const import DOMAIN
+from .coordinator import (
+    LvvwdConfigEntry,
+    LvvwdDataUpdateCoordinator,
+    portal_changed_issue_id,
+)
+from .statistics import async_remove_cost_state
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,3 +45,14 @@ async def _async_update_listener(hass: HomeAssistant, entry: LvvwdConfigEntry) -
 async def async_unload_entry(hass: HomeAssistant, entry: LvvwdConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: LvvwdConfigEntry) -> None:
+    """Delete the cost accrual's saved state and any open Repairs issue.
+
+    The statistics themselves stay (long-term history persists by design).
+    """
+    await async_remove_cost_state(
+        hass, entry.unique_id or entry.data[CONF_USERNAME].strip().lower()
+    )
+    ir.async_delete_issue(hass, DOMAIN, portal_changed_issue_id(entry.entry_id))

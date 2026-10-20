@@ -6,9 +6,8 @@ chain a browser does and parsing the HTML fragments the chart endpoint returns
 (usage values are encoded as HTML-entity-escaped Chartist JSON, in gallons).
 
 This module intentionally has no Home Assistant imports so it stays importable
-standalone (see ``scripts/smoke_test.py``) and unit-testable against captured
-HTML fixtures. The coordinator runs the blocking ``requests`` calls via
-``hass.async_add_executor_job``.
+standalone and unit-testable against captured HTML fixtures. The coordinator
+runs the blocking ``requests`` calls via ``hass.async_add_executor_job``.
 
 Portal mechanics (reverse-engineered):
 

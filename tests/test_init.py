@@ -7,12 +7,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 
-from custom_components.lvvwd.api import LvvwdAuthError, LvvwdConnectionError
+from custom_components.lvvwd.api import (
+    LvvwdAuthError,
+    LvvwdConnectionError,
+    LvvwdParseError,
+)
 from custom_components.lvvwd.const import (
     CONF_ENABLE_COST,
     CONF_METER_SIZE,
+    DOMAIN,
 )
+from custom_components.lvvwd.coordinator import portal_changed_issue_id
 
 from .conftest import SAMPLE_DAILY, SAMPLE_MONTHLY, make_entry
 
@@ -119,3 +126,72 @@ async def test_options_change_reloads_entry(
     assert entry.state is ConfigEntryState.LOADED
     # The reload performed another scrape.
     assert mock_client.fetch_all.call_count > fetch_calls
+
+
+async def test_repeated_parse_failures_raise_a_repair_until_a_good_scrape(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """Two unreadable scrapes in a row open a Repairs issue; success clears it."""
+    entry = make_entry()
+    entry.add_to_hass(hass)
+    registry = ir.async_get(hass)
+    issue_id = portal_changed_issue_id(entry.entry_id)
+
+    with _patch_statistics():
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        coordinator = entry.runtime_data
+
+        mock_client.fetch_all.side_effect = LvvwdConnectionError("network down")
+        await coordinator.async_refresh()
+        await coordinator.async_refresh()
+        assert registry.async_get_issue(DOMAIN, issue_id) is None
+
+        mock_client.fetch_all.side_effect = LvvwdParseError("data-series not found")
+        await coordinator.async_refresh()
+        assert registry.async_get_issue(DOMAIN, issue_id) is None
+        await coordinator.async_refresh()
+        issue = registry.async_get_issue(DOMAIN, issue_id)
+        assert issue is not None
+        assert issue.translation_key == "portal_changed"
+        assert issue.translation_placeholders == {"error": "data-series not found"}
+
+        mock_client.fetch_all.side_effect = None
+        await coordinator.async_refresh()
+        assert registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_removing_the_entry_cleans_up_state_and_issue(
+    hass: HomeAssistant, hass_storage: dict
+) -> None:
+    """Removal deletes the cost-accrual state file and any open issue."""
+    entry = make_entry()
+    entry.add_to_hass(hass)
+    hass_storage[f"lvvwd.cost_{entry.unique_id}"] = {
+        "version": 1,
+        "key": f"lvvwd.cost_{entry.unique_id}",
+        "data": {},
+    }
+
+    with _patch_statistics():
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            portal_changed_issue_id(entry.entry_id),
+            is_fixable=False,
+            severity=ir.IssueSeverity.ERROR,
+            translation_key="portal_changed",
+            translation_placeholders={"error": "x"},
+        )
+        assert await hass.config_entries.async_remove(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert f"lvvwd.cost_{entry.unique_id}" not in hass_storage
+    assert (
+        ir.async_get(hass).async_get_issue(
+            DOMAIN, portal_changed_issue_id(entry.entry_id)
+        )
+        is None
+    )

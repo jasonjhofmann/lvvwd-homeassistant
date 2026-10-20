@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-10-20
+
+- **Fixed: the cost statistic's history was wrong after about four weeks.**
+  Every poll recomputed the cost from the portal's daily window alone and
+  restarted the running total at $0 on the window's first day. The window
+  slides forward each day, so every day that slid out kept a stale total,
+  and the Energy dashboard showed roughly $0 a day for all but the last few
+  weeks. The cost series is now append-only, like the daily usage series:
+  each day is written once, continuing the stored total, and the open
+  month's progress is saved between polls (`.storage/lvvwd.cost_<account>`,
+  deleted when the entry is removed).
+- **Changed: cost is priced by calendar month.** The portal gives no billing
+  dates, so each calendar month is one bill. Its usage allowances (tier
+  blocks, excessive-use threshold) are sized for the whole month from day
+  one, so the running cost never falls; before, a growing day count could
+  re-price earlier usage into cheaper tiers and give negative cost days. A
+  month's last day equals that month's bill exactly. Existing cost rows are
+  kept as they are, and new days continue from the last one.
+- **Added: a Repairs issue when the portal can't be read.** Two scrapes in a
+  row that fail to parse (LVVWD changed its pages) raise a *portal pages
+  can't be read* issue telling you to update; a good scrape clears it. This
+  completes the Gold quality-scale claim, whose `repair-issues` rule was
+  still to do.
+- **Added: a warning when pricing a year with no rate schedule.** LVVWD sets
+  new rates each January 1; until an update adds them, that year is priced
+  at the newest schedule the integration has, and the log says so once.
+- **Changed: the *Data through* sensor is now a diagnostic entity**, as the
+  quality-scale notes already said it was.
+- Docs: README gains *Entities* and *Troubleshooting* sections and mentions
+  *Reconfigure* for changing the password; `quality_scale.yaml` now cites
+  sections that exist; stale comments in `api.py` and the tariff tests
+  corrected.
+
 ## [0.2.1] — 2026-10-20
 
 - **README brought up to date.** The `3/4"` schedule is validated against
@@ -97,4 +130,7 @@ store expects region-locked integrations to declare their countries.)
   (see CONTRIBUTING.md); pre-2026 periods are priced with the 1"-only schedule,
   which never affects go-forward 2026+ users.
 
+[0.3.0]: https://github.com/jasonjhofmann/lvvwd-homeassistant/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/jasonjhofmann/lvvwd-homeassistant/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/jasonjhofmann/lvvwd-homeassistant/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jasonjhofmann/lvvwd-homeassistant/releases/tag/v0.1.0
