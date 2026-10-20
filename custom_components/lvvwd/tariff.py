@@ -116,7 +116,8 @@ SUPPORTED_METER_SIZES = (
 
 # Table A.5 Daily Service Charge ($/day) by meter size, and Table A.17.a SNWA
 # residential Daily Infrastructure Charge ($/day) by meter size. The 2025
-# schedule has only the 1" column (see PRE-2026 METER SIZES in the docstring).
+# schedule has only the 1" and 3/4" columns (see PRE-2026 METER SIZES in the
+# docstring).
 
 RATE_SCHEDULES = (
     {  # 2025 schedule (through 2025-12-31) — 1" and 3/4" known

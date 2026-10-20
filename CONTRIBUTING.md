@@ -57,13 +57,12 @@ SNWA logo.
 
 ## Validating the tariff engine with a real bill (community contribution)
 
-The cost engine is bill-accurate for the `1"` meter and validated to the penny
-against the maintainer's own statements, but two cases are **not yet validated
-from a real source**:
+The cost engine is validated to the penny against real statements for the `1"`
+and `3/4"` meters, but two cases are **not yet validated from a real source**:
 
-- **Non-`1"` meter sizes** — the daily service and SNWA infrastructure charges
+- **Other meter sizes** — the daily service and SNWA infrastructure charges
   are taken from the published 2026 rate tables, but no real `5/8"` (the
-  default), `3/4"`, `1.5"`, … bill has confirmed them end to end.
+  default), `1.5"`, … bill has confirmed them end to end.
 - **The fall season** (Sep/Oct) excessive-use average (867 gal/day) is from the
   official table but has not been seen on a real statement.
 
